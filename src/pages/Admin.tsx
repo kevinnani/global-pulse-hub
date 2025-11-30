@@ -4,11 +4,13 @@ import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { AuthService, DataService, users, posts } from '@/lib/data';
+import { AuthService, DataService, users, posts, ThemeSettings } from '@/lib/data';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Shield, Users, FileText, ToggleLeft, ToggleRight, Trash2, Plus } from 'lucide-react';
+import { Shield, Users, FileText, ToggleLeft, ToggleRight, Trash2, Plus, Palette } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,6 +30,7 @@ const Admin = () => {
   const isAdmin = AuthService.isAdmin();
 
   const [refreshKey, setRefreshKey] = useState(0);
+  const [theme, setTheme] = useState<ThemeSettings>(DataService.getTheme());
 
   useEffect(() => {
     if (!currentUser || !isAdmin) {
@@ -70,6 +73,16 @@ const Admin = () => {
     toast({
       title: 'Post Deleted',
       description: 'Post has been permanently removed',
+    });
+  };
+
+  const handleThemeChange = (key: keyof ThemeSettings, value: string) => {
+    const newTheme = { ...theme, [key]: value };
+    setTheme(newTheme);
+    DataService.updateTheme({ [key]: value });
+    toast({
+      title: 'Theme Updated',
+      description: 'Design changes applied automatically',
     });
   };
 
@@ -116,6 +129,10 @@ const Admin = () => {
             <TabsTrigger value="posts" className="gap-2">
               <FileText className="h-4 w-4" />
               Posts
+            </TabsTrigger>
+            <TabsTrigger value="theme" className="gap-2">
+              <Palette className="h-4 w-4" />
+              Theme
             </TabsTrigger>
           </TabsList>
 
@@ -306,6 +323,116 @@ const Admin = () => {
                     })}
                   </TableBody>
                 </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="theme">
+            <Card>
+              <CardHeader>
+                <CardTitle>Theme Customization</CardTitle>
+                <CardDescription>Customize colors, fonts, and sizes across the entire application</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid md:grid-cols-2 gap-6">
+                  {/* Colors */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold flex items-center gap-2">
+                      <Palette className="h-5 w-5" />
+                      Colors
+                    </h3>
+                    <div className="space-y-3">
+                      <div>
+                        <Label>Primary Color (HSL format)</Label>
+                        <Input
+                          value={theme.primaryColor}
+                          onChange={(e) => handleThemeChange('primaryColor', e.target.value)}
+                          placeholder="200 100% 50%"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Example: 200 100% 50% (cyan)
+                        </p>
+                      </div>
+                      <div>
+                        <Label>Accent Color (HSL format)</Label>
+                        <Input
+                          value={theme.accentColor}
+                          onChange={(e) => handleThemeChange('accentColor', e.target.value)}
+                          placeholder="15 90% 60%"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Example: 15 90% 60% (coral)
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Typography */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold">Typography</h3>
+                    <div className="space-y-3">
+                      <div>
+                        <Label>Font Size</Label>
+                        <div className="flex gap-2 mt-2">
+                          {(['small', 'medium', 'large'] as const).map((size) => (
+                            <Badge
+                              key={size}
+                              variant={theme.fontSize === size ? 'default' : 'outline'}
+                              className="cursor-pointer"
+                              onClick={() => handleThemeChange('fontSize', size)}
+                            >
+                              {size.charAt(0).toUpperCase() + size.slice(1)}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <Label>Font Family</Label>
+                        <div className="flex gap-2 mt-2">
+                          {(['inter', 'playfair', 'system'] as const).map((font) => (
+                            <Badge
+                              key={font}
+                              variant={theme.fontFamily === font ? 'default' : 'outline'}
+                              className="cursor-pointer"
+                              onClick={() => handleThemeChange('fontFamily', font)}
+                            >
+                              {font.charAt(0).toUpperCase() + font.slice(1)}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Image Sizes */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold">Post Images</h3>
+                    <div>
+                      <Label>Image Size</Label>
+                      <div className="flex gap-2 mt-2">
+                        {(['small', 'medium', 'large'] as const).map((size) => (
+                          <Badge
+                            key={size}
+                            variant={theme.imageSize === size ? 'default' : 'outline'}
+                            className="cursor-pointer"
+                            onClick={() => handleThemeChange('imageSize', size)}
+                          >
+                            {size.charAt(0).toUpperCase() + size.slice(1)}
+                          </Badge>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Small: 200px, Medium: 300px, Large: 400px
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t">
+                  <p className="text-sm text-muted-foreground">
+                    💡 All changes are applied automatically across the entire application
+                  </p>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

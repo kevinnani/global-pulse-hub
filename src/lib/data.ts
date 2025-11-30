@@ -13,6 +13,14 @@ export interface User {
   isAdmin: boolean;
 }
 
+export interface ThemeSettings {
+  primaryColor: string;
+  accentColor: string;
+  fontSize: 'small' | 'medium' | 'large';
+  imageSize: 'small' | 'medium' | 'large';
+  fontFamily: 'inter' | 'playfair' | 'system';
+}
+
 export interface Post {
   id: string;
   userId: string;
@@ -45,6 +53,15 @@ export const categories = [
   { id: 'environment', name: 'Environment', icon: '🌍' },
   { id: 'politics', name: 'Politics', icon: '🏛️' },
 ];
+
+// Theme settings
+let themeSettings: ThemeSettings = {
+  primaryColor: '200 100% 50%',
+  accentColor: '15 90% 60%',
+  fontSize: 'medium',
+  imageSize: 'medium',
+  fontFamily: 'inter',
+};
 
 // Demo users
 export const users: User[] = [
@@ -378,5 +395,47 @@ export class DataService {
 
   static getUserById(id: string): User | undefined {
     return users.find(u => u.id === id);
+  }
+
+  static getTheme(): ThemeSettings {
+    const stored = localStorage.getItem('themeSettings');
+    if (stored) {
+      themeSettings = JSON.parse(stored);
+    }
+    return themeSettings;
+  }
+
+  static updateTheme(settings: Partial<ThemeSettings>): void {
+    themeSettings = { ...themeSettings, ...settings };
+    localStorage.setItem('themeSettings', JSON.stringify(themeSettings));
+    this.applyTheme();
+  }
+
+  static applyTheme(): void {
+    const root = document.documentElement;
+    const theme = this.getTheme();
+    
+    // Apply colors
+    root.style.setProperty('--primary', theme.primaryColor);
+    root.style.setProperty('--accent', theme.accentColor);
+    
+    // Apply font size
+    const fontSizes = {
+      small: '14px',
+      medium: '16px',
+      large: '18px',
+    };
+    root.style.setProperty('font-size', fontSizes[theme.fontSize]);
+    
+    // Apply font family
+    const fontFamilies = {
+      inter: 'Inter, system-ui, -apple-system, sans-serif',
+      playfair: 'Playfair Display, serif',
+      system: 'system-ui, -apple-system, sans-serif',
+    };
+    root.style.setProperty('--font-sans', fontFamilies[theme.fontFamily]);
+    
+    // Apply image size class
+    root.setAttribute('data-image-size', theme.imageSize);
   }
 }

@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Post, DataService, categories } from '@/lib/data';
 import { Heart, MapPin } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { useEffect, useState } from 'react';
 
 interface PostCardProps {
   post: Post;
@@ -12,10 +13,29 @@ interface PostCardProps {
 export const PostCard = ({ post }: PostCardProps) => {
   const author = DataService.getUserById(post.userId);
   const category = categories.find(c => c.id === post.category);
+  const [imageHeight, setImageHeight] = useState('300px');
+
+  useEffect(() => {
+    const theme = DataService.getTheme();
+    const sizes = {
+      small: '200px',
+      medium: '300px',
+      large: '400px',
+    };
+    setImageHeight(sizes[theme.imageSize]);
+    
+    const handleStorageChange = () => {
+      const updatedTheme = DataService.getTheme();
+      setImageHeight(sizes[updatedTheme.imageSize]);
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
   return (
     <Card className="overflow-hidden hover:shadow-card transition-shadow group">
-      <div className="aspect-square overflow-hidden bg-muted">
+      <div className="overflow-hidden bg-muted" style={{ height: imageHeight }}>
         <img
           src={post.image}
           alt={post.title}
