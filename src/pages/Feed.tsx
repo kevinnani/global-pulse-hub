@@ -6,13 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { AuthService, DataService, countries, categories } from '@/lib/data';
 import { Plus } from 'lucide-react';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 
 const Feed = () => {
   const navigate = useNavigate();
@@ -74,37 +67,30 @@ const Feed = () => {
         </div>
 
         {/* Country Selectors */}
-        <div className="grid md:grid-cols-2 gap-6 mb-6">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Country 1</label>
-            <Select value={country1} onValueChange={setCountry1}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {countries.map((country) => (
-                  <SelectItem key={country.code} value={country.code}>
-                    {country.flag} {country.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Country 2</label>
-            <Select value={country2} onValueChange={setCountry2}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {countries.map((country) => (
-                  <SelectItem key={country.code} value={country.code}>
-                    {country.flag} {country.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <div className="mb-6 space-y-3">
+          <label className="text-sm font-medium">Select Countries to Compare</label>
+          <div className="flex flex-wrap gap-2">
+            {countries.map((country) => (
+              <Badge
+                key={country.code}
+                variant={country1 === country.code || country2 === country.code ? 'default' : 'outline'}
+                className="cursor-pointer hover:shadow-sm transition-shadow text-base py-2 px-4"
+                onClick={() => {
+                  if (country1 === country.code || country2 === country.code) {
+                    return;
+                  }
+                  if (country1 === 'US' && country2 === 'UK') {
+                    setCountry1(country.code);
+                  } else if (country1 !== 'US' && country1 !== 'UK') {
+                    setCountry2(country.code);
+                  } else {
+                    setCountry1(country.code);
+                  }
+                }}
+              >
+                {country.flag} {country.name}
+              </Badge>
+            ))}
           </div>
         </div>
 
