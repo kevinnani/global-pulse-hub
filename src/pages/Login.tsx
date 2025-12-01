@@ -5,7 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AuthService, countries } from '@/lib/data';
+import { FirebaseAuthService } from '@/lib/firebase-auth';
+import { countries } from '@/lib/firebase-data';
 import { useToast } from '@/hooks/use-toast';
 import { Globe, UserCircle } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -13,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 const Login = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
   
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -24,13 +26,17 @@ const Login = () => {
     username: '',
     country: '',
     avatar: '👤',
-    bio: '',
+    bio: 'Sharing news and knowledge',
   });
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const user = AuthService.login(loginEmail, loginPassword);
+    setIsLoading(true);
+
+    const { user, error } = await FirebaseAuthService.login(loginEmail, loginPassword);
     
+    setIsLoading(false);
+
     if (user) {
       toast({
         title: 'Welcome back!',
@@ -39,38 +45,62 @@ const Login = () => {
       navigate('/feed');
     } else {
       toast({
-        title: 'Login failed',
-        description: 'Invalid credentials or inactive account',
+        title: 'Login Failed',
+        description: error || 'Invalid email or password',
         variant: 'destructive',
       });
     }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!registerData.email || !registerData.password || !registerData.name || !registerData.username || !registerData.country) {
+
+    if (!registerData.country) {
       toast({
-        title: 'Registration failed',
-        description: 'Please fill in all required fields',
+        title: 'Validation Error',
+        description: 'Please select your country',
         variant: 'destructive',
       });
       return;
     }
 
-    const user = AuthService.register(registerData);
-    toast({
-      title: 'Account created!',
-      description: `Welcome, ${user.name}!`,
-    });
-    navigate('/feed');
+    setIsLoading(true);
+
+    const { user, error } = await FirebaseAuthService.register(
+      registerData.email,
+      registerData.password,
+      {
+        name: registerData.name,
+        username: registerData.username,
+        country: registerData.country,
+        avatar: registerData.avatar,
+        bio: registerData.bio,
+      }
+    );
+
+    setIsLoading(false);
+
+    if (user) {
+      toast({
+        title: 'Account Created!',
+        description: `Welcome, ${user.name}!`,
+      });
+      navigate('/feed');
+    } else {
+      toast({
+        title: 'Registration Failed',
+        description: error || 'Could not create account',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleGuestLogin = () => {
-    AuthService.loginAsGuest();
+    const guest = FirebaseAuthService.loginAsGuest();
+    localStorage.setItem('guestUser', JSON.stringify(guest));
     toast({
-      title: 'Welcome, Guest!',
-      description: 'Exploring as a guest user',
+      title: 'Welcome Guest!',
+      description: 'Exploring as a guest user (view-only)',
     });
     navigate('/feed');
   };
@@ -140,8 +170,8 @@ const Login = () => {
                     <p>User: sarah@gmail.com / sarah123</p>
                   </div>
 
-                  <Button type="submit" className="w-full gradient-primary">
-                    Login
+                  <Button type="submit" className="w-full gradient-primary" disabled={isLoading}>
+                    {isLoading ? 'Logging in...' : 'Login'}
                   </Button>
                 </form>
               </TabsContent>
@@ -215,8 +245,8 @@ const Login = () => {
                     </Select>
                   </div>
 
-                  <Button type="submit" className="w-full gradient-primary">
-                    Create Account
+                  <Button type="submit" className="w-full gradient-primary" disabled={isLoading}>
+                    {isLoading ? 'Creating Account...' : 'Create Account'}
                   </Button>
                 </form>
               </TabsContent>

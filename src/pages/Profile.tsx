@@ -1,26 +1,50 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Navbar } from '@/components/Navbar';
 import { PostCard } from '@/components/PostCard';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { AuthService, DataService } from '@/lib/data';
-import { MapPin, Mail, User, Plus } from 'lucide-react';
+import { FirebaseAuthService, User } from '@/lib/firebase-auth';
+import { FirebaseDataService, Post } from '@/lib/firebase-data';
+import { MapPin, Mail, User as UserIcon, Plus } from 'lucide-react';
 
 const Profile = () => {
   const navigate = useNavigate();
-  const currentUser = AuthService.getCurrentUser();
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [userPosts, setUserPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!currentUser) {
-      navigate('/');
+    const guestUser = localStorage.getItem('guestUser');
+    if (guestUser) {
+      const guest = JSON.parse(guestUser);
+      if (guest.isGuest) {
+        navigate('/feed');
+        return;
+      }
+      setCurrentUser(guest);
+      loadPosts(guest.id);
+    } else {
+      FirebaseAuthService.getCurrentUser().then((user) => {
+        if (!user) {
+          navigate('/');
+        } else {
+          setCurrentUser(user);
+          loadPosts(user.id);
+        }
+      });
     }
-  }, [currentUser, navigate]);
+  }, [navigate]);
+
+  const loadPosts = async (userId: string) => {
+    setLoading(true);
+    const posts = await FirebaseDataService.getPostsByUser(userId);
+    setUserPosts(posts);
+    setLoading(false);
+  };
 
   if (!currentUser) return null;
-
-  const userPosts = DataService.getPosts().filter(post => post.userId === currentUser.id);
 
   return (
     <div className="min-h-screen bg-background">
@@ -57,7 +81,7 @@ const Profile = () => {
                     </div>
                     {currentUser.isAdmin && (
                       <div className="flex items-center gap-2 text-primary font-medium">
-                        <User className="h-4 w-4" />
+                        <UserIcon className="h-4 w-4" />
                         Admin
                       </div>
                     )}
@@ -76,10 +100,16 @@ const Profile = () => {
           <div className="space-y-4">
             <h2 className="text-2xl font-serif font-bold">Your Posts ({userPosts.length})</h2>
             
-            {userPosts.length > 0 ? (
+            {loading ? (
+              <div className="text-center py-12 text-muted-foreground">Loading...</div>
+            ) : userPosts.length > 0 ? (
               <div className="grid md:grid-cols-2 gap-4">
                 {userPosts.map((post) => (
-                  <PostCard key={post.id} post={post} />
+                  <PostCard 
+                    key={post.id} 
+                    post={post} 
+                    onUpdate={() => loadPosts(currentUser.id)} 
+                  />
                 ))}
               </div>
             ) : (

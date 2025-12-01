@@ -4,7 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useEffect } from "react";
-import { DataService } from "@/lib/data";
+import { FirebaseDataService } from "@/lib/firebase-data";
 import Login from "./pages/Login";
 import Feed from "./pages/Feed";
 import CreatePost from "./pages/CreatePost";
@@ -16,7 +16,7 @@ const queryClient = new QueryClient();
 
 const App = () => {
   useEffect(() => {
-    DataService.applyTheme();
+    FirebaseDataService.applyTheme();
   }, []);
 
   return (
