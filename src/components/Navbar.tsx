@@ -1,8 +1,9 @@
 import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { AuthService } from '@/lib/data';
-import { LogOut, Globe, User, Shield } from 'lucide-react';
+import { FirebaseAuthService, User } from '@/lib/firebase-auth';
+import { LogOut, Globe, User as UserIcon, Shield, Plus } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,11 +15,31 @@ import {
 
 export const Navbar = () => {
   const navigate = useNavigate();
-  const currentUser = AuthService.getCurrentUser();
-  const isAdmin = AuthService.isAdmin();
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  const handleLogout = () => {
-    AuthService.logout();
+  useEffect(() => {
+    // Check for guest user first
+    const guestUser = localStorage.getItem('guestUser');
+    if (guestUser) {
+      setCurrentUser(JSON.parse(guestUser));
+      return;
+    }
+
+    // Then check Firebase auth
+    const unsubscribe = FirebaseAuthService.onAuthChange((user) => {
+      setCurrentUser(user);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const isAdmin = currentUser?.isAdmin || false;
+  const isGuest = currentUser?.isGuest || false;
+
+  const handleLogout = async () => {
+    localStorage.removeItem('guestUser');
+    await FirebaseAuthService.logout();
+    setCurrentUser(null);
     navigate('/');
   };
 
@@ -40,6 +61,16 @@ export const Navbar = () => {
                   Feed
                 </Button>
               </Link>
+
+              {/* Only show Create Post button if not guest */}
+              {!isGuest && (
+                <Link to="/create-post">
+                  <Button size="sm" className="gap-2 gradient-primary">
+                    <Plus className="h-4 w-4" />
+                    <span className="hidden md:inline">Create Post</span>
+                  </Button>
+                </Link>
+              )}
               
               {isAdmin && (
                 <Link to="/admin">
@@ -62,14 +93,18 @@ export const Navbar = () => {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                  <DropdownMenuLabel>
+                    {isGuest ? 'Guest Account (View Only)' : 'My Account'}
+                  </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link to="/profile" className="cursor-pointer">
-                      <User className="mr-2 h-4 w-4" />
-                      Profile
-                    </Link>
-                  </DropdownMenuItem>
+                  {!isGuest && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/profile" className="cursor-pointer">
+                        <UserIcon className="mr-2 h-4 w-4" />
+                        Profile
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   {isAdmin && (
                     <DropdownMenuItem asChild>
                       <Link to="/admin" className="cursor-pointer">

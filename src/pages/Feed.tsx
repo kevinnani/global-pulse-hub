@@ -2,29 +2,54 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Navbar } from '@/components/Navbar';
 import { PostCard } from '@/components/PostCard';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { AuthService, DataService, countries, categories } from '@/lib/data';
-import { Plus } from 'lucide-react';
+import { Post, FirebaseDataService, countries, categories } from '@/lib/firebase-data';
+import { User, FirebaseAuthService } from '@/lib/firebase-auth';
 
 const Feed = () => {
   const navigate = useNavigate();
-  const currentUser = AuthService.getCurrentUser();
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [posts1, setPosts1] = useState<Post[]>([]);
+  const [posts2, setPosts2] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
   
   const [country1, setCountry1] = useState('US');
   const [country2, setCountry2] = useState('UK');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   
   useEffect(() => {
-    if (!currentUser) {
-      navigate('/');
+    // Check for guest user
+    const guestUser = localStorage.getItem('guestUser');
+    if (guestUser) {
+      setCurrentUser(JSON.parse(guestUser));
+    } else {
+      // Check Firebase auth
+      const unsubscribe = FirebaseAuthService.onAuthChange((user) => {
+        setCurrentUser(user);
+        if (!user) {
+          navigate('/');
+        }
+      });
+      return () => unsubscribe();
     }
-  }, [currentUser, navigate]);
+  }, [navigate]);
+
+  useEffect(() => {
+    loadPosts();
+  }, [country1, country2, selectedCategory]);
+
+  const loadPosts = async () => {
+    setLoading(true);
+    const [p1, p2] = await Promise.all([
+      FirebaseDataService.getPosts(country1, selectedCategory),
+      FirebaseDataService.getPosts(country2, selectedCategory),
+    ]);
+    setPosts1(p1);
+    setPosts2(p2);
+    setLoading(false);
+  };
 
   if (!currentUser) return null;
-
-  const posts1 = DataService.getPosts(country1, selectedCategory);
-  const posts2 = DataService.getPosts(country2, selectedCategory);
 
   return (
     <div className="min-h-screen bg-background">
@@ -33,15 +58,9 @@ const Feed = () => {
       <main className="container mx-auto px-4 py-6">
         {/* Header */}
         <div className="mb-8 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-serif font-bold mb-2">Global News Feed</h1>
-              <p className="text-muted-foreground">Compare perspectives from around the world</p>
-            </div>
-            <Button onClick={() => navigate('/create-post')} className="gradient-primary gap-2">
-              <Plus className="h-4 w-4" />
-              Create Post
-            </Button>
+          <div>
+            <h1 className="text-3xl font-serif font-bold mb-2">Global News Feed</h1>
+            <p className="text-muted-foreground">Compare perspectives from around the world</p>
           </div>
 
           {/* Category Filter */}
@@ -103,8 +122,10 @@ const Feed = () => {
               {countries.find(c => c.code === country1)?.name}
             </h2>
             <div className="space-y-4">
-              {posts1.length > 0 ? (
-                posts1.map((post) => <PostCard key={post.id} post={post} />)
+              {loading ? (
+                <div className="text-center py-12 text-muted-foreground">Loading...</div>
+              ) : posts1.length > 0 ? (
+                posts1.map((post) => <PostCard key={post.id} post={post} onUpdate={loadPosts} />)
               ) : (
                 <div className="text-center py-12 text-muted-foreground">
                   No posts found for this selection
@@ -120,8 +141,10 @@ const Feed = () => {
               {countries.find(c => c.code === country2)?.name}
             </h2>
             <div className="space-y-4">
-              {posts2.length > 0 ? (
-                posts2.map((post) => <PostCard key={post.id} post={post} />)
+              {loading ? (
+                <div className="text-center py-12 text-muted-foreground">Loading...</div>
+              ) : posts2.length > 0 ? (
+                posts2.map((post) => <PostCard key={post.id} post={post} onUpdate={loadPosts} />)
               ) : (
                 <div className="text-center py-12 text-muted-foreground">
                   No posts found for this selection
