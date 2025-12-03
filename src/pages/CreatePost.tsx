@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
@@ -7,59 +7,128 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AuthService, DataService, countries, categories } from '@/lib/data';
+import { FirebaseAuthService, User } from '@/lib/firebase-auth';
+import { FirebaseDataService, countries, categories } from '@/lib/firebase-data';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Upload, Image as ImageIcon } from 'lucide-react';
 
 const CreatePost = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const currentUser = AuthService.getCurrentUser();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string>('');
 
   const [formData, setFormData] = useState({
-    country: currentUser?.country || '',
+    country: '',
     category: '',
     title: '',
     content: '',
-    image: '',
   });
 
   useEffect(() => {
-    if (!currentUser) {
-      navigate('/');
+    // Check for guest user
+    const guestUser = localStorage.getItem('guestUser');
+    if (guestUser) {
+      // Guest users can't create posts - redirect
+      navigate('/feed');
+      return;
     }
-  }, [currentUser, navigate]);
 
-  if (!currentUser) return null;
+    // Check for Firebase user
+    const unsubscribe = FirebaseAuthService.onAuthChange((user) => {
+      if (user) {
+        setCurrentUser(user);
+        setFormData(prev => ({ ...prev, country: user.country }));
+      } else {
+        navigate('/');
+      }
+    });
 
-  const handleSubmit = (e: React.FormEvent) => {
+    return () => unsubscribe();
+  }, [navigate]);
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: 'File too large',
+          description: 'Please select an image under 5MB',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Convert to base64
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        setImagePreview(base64String);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.country || !formData.category || !formData.title || !formData.content || !formData.image) {
+    if (!currentUser) {
+      toast({
+        title: 'Not logged in',
+        description: 'Please login to create a post',
+        variant: 'destructive',
+      });
+      navigate('/');
+      return;
+    }
+
+    if (!formData.country || !formData.category || !formData.title || !formData.content || !imagePreview) {
       toast({
         title: 'Validation Error',
-        description: 'Please fill in all fields',
+        description: 'Please fill in all fields and select an image',
         variant: 'destructive',
       });
       return;
     }
 
-    DataService.createPost({
+    setIsLoading(true);
+
+    const { post, error } = await FirebaseDataService.createPost({
       userId: currentUser.id,
       country: formData.country,
       category: formData.category as any,
       title: formData.title,
       content: formData.content,
-      image: formData.image,
+      image: imagePreview, // Base64 string stored directly
     });
 
-    toast({
-      title: 'Post Created!',
-      description: 'Your post has been published successfully',
-    });
+    setIsLoading(false);
 
-    navigate('/feed');
+    if (post) {
+      toast({
+        title: 'Post Created!',
+        description: 'Your post has been published successfully',
+      });
+      navigate('/feed');
+    } else {
+      toast({
+        title: 'Error',
+        description: error || 'Failed to create post',
+        variant: 'destructive',
+      });
+    }
   };
+
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-pulse text-muted-foreground">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -75,12 +144,12 @@ const CreatePost = () => {
           Back to Feed
         </Button>
 
-        <Card>
-          <CardHeader>
+        <Card className="shadow-lg">
+          <CardHeader className="bg-gradient-to-r from-primary/10 to-accent/10 rounded-t-lg">
             <CardTitle className="text-2xl font-serif">Create New Post</CardTitle>
             <CardDescription>Share news and knowledge with the global community</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -130,6 +199,7 @@ const CreatePost = () => {
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   required
+                  className="text-lg"
                 />
               </div>
 
@@ -146,32 +216,53 @@ const CreatePost = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="image">Image URL</Label>
-                <Input
-                  id="image"
-                  type="url"
-                  placeholder="https://example.com/image.jpg"
-                  value={formData.image}
-                  onChange={(e) => setFormData({ ...formData, image: e.target.value })}
-                  required
+                <Label>Post Image</Label>
+                <div 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-border rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-all"
+                >
+                  {imagePreview ? (
+                    <div className="space-y-4">
+                      <img
+                        src={imagePreview}
+                        alt="Preview"
+                        className="max-h-64 mx-auto rounded-lg object-cover"
+                      />
+                      <p className="text-sm text-muted-foreground">Click to change image</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
+                        <ImageIcon className="h-6 w-6 text-primary" />
+                      </div>
+                      <p className="text-sm font-medium">Click to upload image</p>
+                      <p className="text-xs text-muted-foreground">PNG, JPG up to 5MB</p>
+                    </div>
+                  )}
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageSelect}
+                  className="hidden"
                 />
-                {formData.image && (
-                  <div className="mt-2 rounded-lg overflow-hidden border border-border">
-                    <img
-                      src={formData.image}
-                      alt="Preview"
-                      className="w-full h-48 object-cover"
-                      onError={(e) => {
-                        e.currentTarget.src = 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=800';
-                      }}
-                    />
-                  </div>
-                )}
               </div>
 
-              <div className="flex gap-4">
-                <Button type="submit" className="flex-1 gradient-primary">
-                  Publish Post
+              <div className="flex gap-4 pt-4">
+                <Button 
+                  type="submit" 
+                  className="flex-1 bg-primary hover:bg-primary/90"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <>
+                      <Upload className="mr-2 h-4 w-4 animate-spin" />
+                      Publishing...
+                    </>
+                  ) : (
+                    'Publish Post'
+                  )}
                 </Button>
                 <Button type="button" variant="outline" onClick={() => navigate('/feed')}>
                   Cancel

@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Post, FirebaseDataService, categories } from '@/lib/firebase-data';
 import { User, FirebaseAuthService } from '@/lib/firebase-auth';
-import { Heart, MapPin, Pencil, Trash2, Share2 } from 'lucide-react';
+import { Heart, MapPin, Trash2, Share2, Copy, Check } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useEffect, useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
@@ -19,6 +19,12 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface PostCardProps {
   post: Post;
@@ -30,6 +36,9 @@ export const PostCard = ({ post, onUpdate }: PostCardProps) => {
   const [imageHeight, setImageHeight] = useState('300px');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [author, setAuthor] = useState<User | null>(null);
+  const [isLiked, setIsLiked] = useState(false);
+  const [likesCount, setLikesCount] = useState(post.likes || 0);
+  const [copied, setCopied] = useState(false);
   const category = categories.find(c => c.id === post.category);
 
   useEffect(() => {
@@ -60,17 +69,23 @@ export const PostCard = ({ post, onUpdate }: PostCardProps) => {
       FirebaseAuthService.getCurrentUser().then(setCurrentUser);
     }
 
-    // Get post author - for now we'll just use the userId
-    // In a real implementation, you'd fetch from Firestore users collection
-    setAuthor({
-      id: post.userId,
-      email: '',
-      name: 'User',
-      username: 'user',
-      country: post.country,
-      avatar: '👤',
-      bio: '',
-      isAdmin: false,
+    // Get post author
+    FirebaseAuthService.getUserById(post.userId).then((user) => {
+      if (user) {
+        setAuthor(user);
+      } else {
+        setAuthor({
+          id: post.userId,
+          email: '',
+          name: 'User',
+          username: 'user',
+          country: post.country,
+          avatar: '👤',
+          bio: '',
+          isAdmin: false,
+          isActive: true,
+        });
+      }
     });
   }, [post.userId]);
 
@@ -93,12 +108,25 @@ export const PostCard = ({ post, onUpdate }: PostCardProps) => {
     }
   };
 
-  const handleShare = () => {
-    FirebaseDataService.sharePost(post);
-    toast({
-      title: 'Link Copied!',
-      description: 'Post link has been copied to clipboard',
-    });
+  const handleLike = async () => {
+    if (!currentUser || currentUser.isGuest) {
+      toast({ title: 'Login Required', description: 'Please login to like posts', variant: 'destructive' });
+      return;
+    }
+    const { success, liked } = await FirebaseDataService.toggleLike(post.id, currentUser.id);
+    if (success) {
+      setIsLiked(liked);
+      setLikesCount(prev => liked ? prev + 1 : prev - 1);
+    }
+  };
+
+  const handleShare = (platform?: 'whatsapp' | 'twitter' | 'facebook' | 'copy') => {
+    FirebaseDataService.sharePost(post, platform);
+    if (platform === 'copy') {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      toast({ title: 'Link Copied!', description: 'Post link copied to clipboard' });
+    }
   };
 
   return (
@@ -137,22 +165,26 @@ export const PostCard = ({ post, onUpdate }: PostCardProps) => {
           <p className="text-sm text-muted-foreground line-clamp-2">{post.content}</p>
         </div>
 
-        <div className="flex items-center justify-between pt-2">
-          <div className="flex items-center gap-1 text-muted-foreground">
-            <Heart className="h-4 w-4" />
-            <span className="text-sm font-medium">{post.likes}</span>
-          </div>
+        <div className="flex items-center justify-between pt-3 border-t">
+          <Button variant="ghost" size="sm" onClick={handleLike} className={`gap-2 ${isLiked ? 'text-red-500' : ''}`}>
+            <Heart className={`h-5 w-5 ${isLiked ? 'fill-current' : ''}`} />
+            <span>{likesCount}</span>
+          </Button>
 
           <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleShare}
-              className="gap-2"
-            >
-              <Share2 className="h-4 w-4" />
-              Share
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="gap-2">
+                  <Share2 className="h-4 w-4" /> Share
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={() => handleShare('whatsapp')}>💬 WhatsApp</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleShare('twitter')}>🐦 Twitter</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleShare('facebook')}>📘 Facebook</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleShare('copy')}>{copied ? <><Check className="h-4 w-4 mr-2"/> Copied!</> : <><Copy className="h-4 w-4 mr-2"/> Copy Link</>}</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             {isOwner && (
               <>
