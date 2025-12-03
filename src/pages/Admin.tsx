@@ -4,11 +4,12 @@ import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { AuthService, DataService, users, posts, ThemeSettings } from '@/lib/data';
+import { FirebaseAuthService, User } from '@/lib/firebase-auth';
+import { FirebaseDataService, Post, ThemeSettings } from '@/lib/firebase-data';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Shield, Users, FileText, ToggleLeft, ToggleRight, Trash2, Plus, Palette } from 'lucide-react';
+import { Shield, Users, FileText, ToggleLeft, ToggleRight, Trash2, Plus, Palette, RefreshCw } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -26,65 +27,133 @@ import {
 const Admin = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const currentUser = AuthService.getCurrentUser();
-  const isAdmin = AuthService.isAdmin();
-
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [theme, setTheme] = useState<ThemeSettings>(DataService.getTheme());
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [users, setUsers] = useState<User[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [theme, setTheme] = useState<ThemeSettings>(FirebaseDataService.getTheme());
 
   useEffect(() => {
-    if (!currentUser || !isAdmin) {
+    // Check for guest user first
+    const guestUser = localStorage.getItem('guestUser');
+    if (guestUser) {
       navigate('/feed');
+      return;
     }
-  }, [currentUser, isAdmin, navigate]);
 
-  if (!currentUser || !isAdmin) return null;
-
-  const handleToggleUserStatus = (userId: string) => {
-    DataService.toggleUserStatus(userId);
-    setRefreshKey(prev => prev + 1);
-    toast({
-      title: 'User Status Updated',
-      description: 'User account status has been changed',
+    // Check for Firebase user
+    const unsubscribe = FirebaseAuthService.onAuthChange(async (user) => {
+      if (user) {
+        if (!user.isAdmin) {
+          navigate('/feed');
+          return;
+        }
+        setCurrentUser(user);
+        await loadData();
+      } else {
+        navigate('/');
+      }
     });
+
+    return () => unsubscribe();
+  }, [navigate]);
+
+  const loadData = async () => {
+    setIsLoading(true);
+    const [usersData, postsData] = await Promise.all([
+      FirebaseAuthService.getAllUsers(),
+      FirebaseDataService.getAllPosts(),
+    ]);
+    setUsers(usersData);
+    setPosts(postsData);
+    setIsLoading(false);
   };
 
-  const handleDeleteUser = (userId: string) => {
-    DataService.deleteUser(userId);
-    setRefreshKey(prev => prev + 1);
-    toast({
-      title: 'User Deleted',
-      description: 'User account has been permanently removed',
-    });
+  const handleToggleUserStatus = async (userId: string) => {
+    const { success, error } = await FirebaseAuthService.toggleUserStatus(userId);
+    if (success) {
+      await loadData();
+      toast({
+        title: 'User Status Updated',
+        description: 'User account status has been changed',
+      });
+    } else {
+      toast({
+        title: 'Error',
+        description: error || 'Failed to update user',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const handleTogglePostStatus = (postId: string) => {
-    DataService.togglePostStatus(postId);
-    setRefreshKey(prev => prev + 1);
-    toast({
-      title: 'Post Status Updated',
-      description: 'Post visibility has been changed',
-    });
+  const handleDeleteUser = async (userId: string) => {
+    const { success, error } = await FirebaseAuthService.deleteUser(userId);
+    if (success) {
+      await loadData();
+      toast({
+        title: 'User Deleted',
+        description: 'User account has been permanently removed',
+      });
+    } else {
+      toast({
+        title: 'Error',
+        description: error || 'Failed to delete user',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const handleDeletePost = (postId: string) => {
-    DataService.deletePost(postId);
-    setRefreshKey(prev => prev + 1);
-    toast({
-      title: 'Post Deleted',
-      description: 'Post has been permanently removed',
-    });
+  const handleTogglePostStatus = async (postId: string) => {
+    const { success, error } = await FirebaseDataService.togglePostStatus(postId);
+    if (success) {
+      await loadData();
+      toast({
+        title: 'Post Status Updated',
+        description: 'Post visibility has been changed',
+      });
+    } else {
+      toast({
+        title: 'Error',
+        description: error || 'Failed to update post',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleDeletePost = async (postId: string) => {
+    const { success, error } = await FirebaseDataService.deletePost(postId);
+    if (success) {
+      await loadData();
+      toast({
+        title: 'Post Deleted',
+        description: 'Post has been permanently removed',
+      });
+    } else {
+      toast({
+        title: 'Error',
+        description: error || 'Failed to delete post',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleThemeChange = (key: keyof ThemeSettings, value: string) => {
     const newTheme = { ...theme, [key]: value };
     setTheme(newTheme);
-    DataService.updateTheme({ [key]: value });
+    FirebaseDataService.updateTheme({ [key]: value });
     toast({
       title: 'Theme Updated',
       description: 'Design changes applied automatically',
     });
   };
+
+  if (!currentUser || !currentUser.isAdmin) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-pulse text-muted-foreground">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -92,27 +161,37 @@ const Admin = () => {
       
       <main className="container mx-auto px-4 py-6">
         <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <Shield className="h-8 w-8 text-primary" />
-            <h1 className="text-3xl font-serif font-bold">Admin Dashboard</h1>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Shield className="h-8 w-8 text-primary" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-serif font-bold">Admin Dashboard</h1>
+                <p className="text-muted-foreground">Manage users, posts, and platform content</p>
+              </div>
+            </div>
+            <Button onClick={loadData} variant="outline" className="gap-2">
+              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
           </div>
-          <p className="text-muted-foreground">Manage users, posts, and platform content</p>
         </div>
 
         <div className="grid md:grid-cols-3 gap-4 mb-6">
-          <Card>
+          <Card className="bg-gradient-to-br from-primary/10 to-primary/5">
             <CardHeader className="pb-3">
               <CardDescription>Total Users</CardDescription>
               <CardTitle className="text-3xl">{users.length}</CardTitle>
             </CardHeader>
           </Card>
-          <Card>
+          <Card className="bg-gradient-to-br from-accent/10 to-accent/5">
             <CardHeader className="pb-3">
               <CardDescription>Total Posts</CardDescription>
               <CardTitle className="text-3xl">{posts.length}</CardTitle>
             </CardHeader>
           </Card>
-          <Card>
+          <Card className="bg-gradient-to-br from-green-500/10 to-green-500/5">
             <CardHeader className="pb-3">
               <CardDescription>Active Posts</CardDescription>
               <CardTitle className="text-3xl">{posts.filter(p => p.isActive).length}</CardTitle>
@@ -143,85 +222,92 @@ const Admin = () => {
                 <CardDescription>View and manage all user accounts</CardDescription>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>User</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Country</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {users.map((user) => (
-                      <TableRow key={user.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="text-2xl">{user.avatar}</span>
-                            <div>
-                              <div className="font-medium">{user.name}</div>
-                              <div className="text-sm text-muted-foreground">@{user.username}</div>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>{user.email}</TableCell>
-                        <TableCell>{user.country}</TableCell>
-                        <TableCell>
-                          {user.isAdmin ? (
-                            <Badge variant="default">Admin</Badge>
-                          ) : (
-                            <Badge variant="secondary">User</Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {user.isActive ? (
-                            <Badge variant="default" className="bg-green-500">Active</Badge>
-                          ) : (
-                            <Badge variant="destructive">Inactive</Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleToggleUserStatus(user.id)}
-                            >
-                              {user.isActive ? (
-                                <ToggleRight className="h-4 w-4" />
-                              ) : (
-                                <ToggleLeft className="h-4 w-4" />
-                              )}
-                            </Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button size="sm" variant="ghost">
-                                  <Trash2 className="h-4 w-4 text-destructive" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete User</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Are you sure you want to delete {user.name}? This action cannot be undone.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => handleDeleteUser(user.id)}>
-                                    Delete
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </div>
-                        </TableCell>
+                {isLoading ? (
+                  <div className="text-center py-8 text-muted-foreground">Loading users...</div>
+                ) : users.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">No users found</div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>User</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Country</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {users.map((user) => (
+                        <TableRow key={user.id}>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <span className="text-2xl">{user.avatar}</span>
+                              <div>
+                                <div className="font-medium">{user.name}</div>
+                                <div className="text-sm text-muted-foreground">@{user.username}</div>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm">{user.email}</TableCell>
+                          <TableCell>{user.country}</TableCell>
+                          <TableCell>
+                            {user.isAdmin ? (
+                              <Badge variant="default">Admin</Badge>
+                            ) : (
+                              <Badge variant="secondary">User</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {user.isActive ? (
+                              <Badge className="bg-green-500 hover:bg-green-600">Active</Badge>
+                            ) : (
+                              <Badge variant="destructive">Inactive</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleToggleUserStatus(user.id)}
+                                disabled={user.id === currentUser.id}
+                              >
+                                {user.isActive ? (
+                                  <ToggleRight className="h-4 w-4" />
+                                ) : (
+                                  <ToggleLeft className="h-4 w-4" />
+                                )}
+                              </Button>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button size="sm" variant="ghost" disabled={user.id === currentUser.id}>
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Delete User</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Are you sure you want to delete {user.name}? This action cannot be undone.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => handleDeleteUser(user.id)}>
+                                      Delete
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -239,21 +325,24 @@ const Admin = () => {
                 </Button>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Post</TableHead>
-                      <TableHead>Author</TableHead>
-                      <TableHead>Country</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {posts.map((post) => {
-                      const author = DataService.getUserById(post.userId);
-                      return (
+                {isLoading ? (
+                  <div className="text-center py-8 text-muted-foreground">Loading posts...</div>
+                ) : posts.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">No posts found</div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Post</TableHead>
+                        <TableHead>Country</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Likes</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {posts.map((post) => (
                         <TableRow key={post.id}>
                           <TableCell>
                             <div className="flex items-center gap-3">
@@ -270,14 +359,14 @@ const Admin = () => {
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell>{author?.name || 'Unknown'}</TableCell>
                           <TableCell>{post.country}</TableCell>
                           <TableCell>
                             <Badge variant="secondary">{post.category}</Badge>
                           </TableCell>
+                          <TableCell>{post.likes}</TableCell>
                           <TableCell>
                             {post.isActive ? (
-                              <Badge variant="default" className="bg-green-500">Active</Badge>
+                              <Badge className="bg-green-500 hover:bg-green-600">Active</Badge>
                             ) : (
                               <Badge variant="destructive">Hidden</Badge>
                             )}
@@ -319,10 +408,10 @@ const Admin = () => {
                             </div>
                           </TableCell>
                         </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -421,17 +510,8 @@ const Admin = () => {
                           </Badge>
                         ))}
                       </div>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        Small: 200px, Medium: 300px, Large: 400px
-                      </p>
                     </div>
                   </div>
-                </div>
-
-                <div className="pt-4 border-t">
-                  <p className="text-sm text-muted-foreground">
-                    💡 All changes are applied automatically across the entire application
-                  </p>
                 </div>
               </CardContent>
             </Card>

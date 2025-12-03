@@ -8,19 +8,46 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { FirebaseAuthService } from '@/lib/firebase-auth';
 import { countries } from '@/lib/firebase-data';
 import { useToast } from '@/hooks/use-toast';
-import { Globe, UserCircle } from 'lucide-react';
+import { Globe, UserCircle, Phone, Mail, Eye, EyeOff } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+// Country codes for phone registration
+const countryCodes = [
+  { code: 'US', dial: '+1', name: 'United States' },
+  { code: 'UK', dial: '+44', name: 'United Kingdom' },
+  { code: 'FR', dial: '+33', name: 'France' },
+  { code: 'DE', dial: '+49', name: 'Germany' },
+  { code: 'JP', dial: '+81', name: 'Japan' },
+  { code: 'BR', dial: '+55', name: 'Brazil' },
+  { code: 'IN', dial: '+91', name: 'India' },
+  { code: 'AU', dial: '+61', name: 'Australia' },
+  { code: 'CN', dial: '+86', name: 'China' },
+  { code: 'RU', dial: '+7', name: 'Russia' },
+  { code: 'IT', dial: '+39', name: 'Italy' },
+  { code: 'ES', dial: '+34', name: 'Spain' },
+  { code: 'MX', dial: '+52', name: 'Mexico' },
+  { code: 'CA', dial: '+1', name: 'Canada' },
+  { code: 'KR', dial: '+82', name: 'South Korea' },
+];
 
 const Login = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [loginMethod, setLoginMethod] = useState<'email' | 'phone'>('email');
   
-  const [loginEmail, setLoginEmail] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
+  const [loginData, setLoginData] = useState({
+    email: '',
+    phone: '',
+    countryCode: '+1',
+    password: '',
+  });
   
   const [registerData, setRegisterData] = useState({
     email: '',
+    phone: '',
+    countryCode: '+1',
     password: '',
     name: '',
     username: '',
@@ -33,7 +60,12 @@ const Login = () => {
     e.preventDefault();
     setIsLoading(true);
 
-    const { user, error } = await FirebaseAuthService.login(loginEmail, loginPassword);
+    // For phone login, convert to email format (phone@worldnews.app)
+    const email = loginMethod === 'phone' 
+      ? `${loginData.countryCode.replace('+', '')}${loginData.phone}@worldnews.app`
+      : loginData.email;
+
+    const { user, error } = await FirebaseAuthService.login(email, loginData.password);
     
     setIsLoading(false);
 
@@ -46,7 +78,7 @@ const Login = () => {
     } else {
       toast({
         title: 'Login Failed',
-        description: error || 'Invalid email or password',
+        description: error || 'Invalid credentials',
         variant: 'destructive',
       });
     }
@@ -64,10 +96,24 @@ const Login = () => {
       return;
     }
 
+    if (!registerData.email && !registerData.phone) {
+      toast({
+        title: 'Validation Error',
+        description: 'Please provide email or phone number',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsLoading(true);
 
+    // For phone registration, create a synthetic email
+    const email = registerData.phone 
+      ? `${registerData.countryCode.replace('+', '')}${registerData.phone}@worldnews.app`
+      : registerData.email;
+
     const { user, error } = await FirebaseAuthService.register(
-      registerData.email,
+      email,
       registerData.password,
       {
         name: registerData.name,
@@ -75,6 +121,7 @@ const Login = () => {
         country: registerData.country,
         avatar: registerData.avatar,
         bio: registerData.bio,
+        phone: registerData.phone ? `${registerData.countryCode}${registerData.phone}` : undefined,
       }
     );
 
@@ -106,30 +153,34 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Animated background gradient */}
-      <div className="absolute inset-0 gradient-hero opacity-10" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(185,185,185,0.1),transparent_50%)]" />
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-gradient-to-br from-background via-background to-muted">
+      {/* Animated background */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary/20 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-accent/20 rounded-full blur-3xl animate-pulse delay-1000" />
+      </div>
       
-      <div className="w-full max-w-4xl relative z-10">
+      <div className="w-full max-w-md relative z-10">
         {/* Hero Section */}
         <div className="text-center mb-8 space-y-4">
           <div className="inline-flex items-center gap-3 justify-center mb-4">
-            <Globe className="h-12 w-12 text-primary animate-pulse" />
-            <h1 className="text-5xl font-serif font-bold bg-gradient-hero bg-clip-text text-transparent">
-              WorldNews
-            </h1>
+            <div className="p-3 bg-primary/10 rounded-2xl">
+              <Globe className="h-10 w-10 text-primary" />
+            </div>
           </div>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Compare news from around the world. Share perspectives. Stay informed globally.
+          <h1 className="text-4xl font-serif font-bold text-foreground">
+            WorldNews
+          </h1>
+          <p className="text-muted-foreground">
+            Compare news from around the world
           </p>
         </div>
 
-        {/* Auth Cards */}
-        <Card className="shadow-lifted">
-          <CardHeader>
-            <CardTitle className="text-2xl font-serif">Get Started</CardTitle>
-            <CardDescription>Login, register, or explore as a guest</CardDescription>
+        {/* Auth Card */}
+        <Card className="shadow-2xl border-0 bg-card/80 backdrop-blur-xl">
+          <CardHeader className="text-center pb-2">
+            <CardTitle className="text-xl">Get Started</CardTitle>
+            <CardDescription>Login or create an account</CardDescription>
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="login" className="w-full">
@@ -140,37 +191,97 @@ const Login = () => {
               
               <TabsContent value="login">
                 <form onSubmit={handleLogin} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="login-email">Email</Label>
-                    <Input
-                      id="login-email"
-                      type="email"
-                      placeholder="your@email.com"
-                      value={loginEmail}
-                      onChange={(e) => setLoginEmail(e.target.value)}
-                      required
-                    />
+                  {/* Login Method Toggle */}
+                  <div className="flex gap-2 p-1 bg-muted rounded-lg">
+                    <Button
+                      type="button"
+                      variant={loginMethod === 'email' ? 'default' : 'ghost'}
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => setLoginMethod('email')}
+                    >
+                      <Mail className="h-4 w-4 mr-2" />
+                      Email
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={loginMethod === 'phone' ? 'default' : 'ghost'}
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => setLoginMethod('phone')}
+                    >
+                      <Phone className="h-4 w-4 mr-2" />
+                      Phone
+                    </Button>
                   </div>
+
+                  {loginMethod === 'email' ? (
+                    <div className="space-y-2">
+                      <Label htmlFor="login-email">Email</Label>
+                      <Input
+                        id="login-email"
+                        type="email"
+                        placeholder="your@email.com"
+                        value={loginData.email}
+                        onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
+                        required
+                      />
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Label>Phone Number</Label>
+                      <div className="flex gap-2">
+                        <Select
+                          value={loginData.countryCode}
+                          onValueChange={(value) => setLoginData({ ...loginData, countryCode: value })}
+                        >
+                          <SelectTrigger className="w-24">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {countryCodes.map((c) => (
+                              <SelectItem key={c.code + c.dial} value={c.dial}>
+                                {c.dial}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Input
+                          type="tel"
+                          placeholder="Phone number"
+                          value={loginData.phone}
+                          onChange={(e) => setLoginData({ ...loginData, phone: e.target.value.replace(/\D/g, '') })}
+                          className="flex-1"
+                          required
+                        />
+                      </div>
+                    </div>
+                  )}
                   
                   <div className="space-y-2">
                     <Label htmlFor="login-password">Password</Label>
-                    <Input
-                      id="login-password"
-                      type="password"
-                      placeholder="••••••••"
-                      value={loginPassword}
-                      onChange={(e) => setLoginPassword(e.target.value)}
-                      required
-                    />
+                    <div className="relative">
+                      <Input
+                        id="login-password"
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="••••••••"
+                        value={loginData.password}
+                        onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
+                        required
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3"
+                        onClick={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
                   </div>
 
-                  <div className="bg-accent/50 p-3 rounded-lg text-sm space-y-1">
-                    <p className="font-medium">Demo Credentials:</p>
-                    <p>Admin: kevin@gmail.com / kevin123</p>
-                    <p>User: sarah@gmail.com / sarah123</p>
-                  </div>
-
-                  <Button type="submit" className="w-full gradient-primary" disabled={isLoading}>
+                  <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading ? 'Logging in...' : 'Login'}
                   </Button>
                 </form>
@@ -203,15 +314,42 @@ const Login = () => {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="register-email">Email</Label>
+                    <Label>Email or Phone (choose one)</Label>
                     <Input
-                      id="register-email"
                       type="email"
-                      placeholder="john@example.com"
+                      placeholder="Email (optional)"
                       value={registerData.email}
-                      onChange={(e) => setRegisterData({ ...registerData, email: e.target.value })}
-                      required
+                      onChange={(e) => setRegisterData({ ...registerData, email: e.target.value, phone: '' })}
                     />
+                    <div className="flex items-center gap-2 my-2">
+                      <div className="flex-1 h-px bg-border" />
+                      <span className="text-xs text-muted-foreground">OR</span>
+                      <div className="flex-1 h-px bg-border" />
+                    </div>
+                    <div className="flex gap-2">
+                      <Select
+                        value={registerData.countryCode}
+                        onValueChange={(value) => setRegisterData({ ...registerData, countryCode: value })}
+                      >
+                        <SelectTrigger className="w-24">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {countryCodes.map((c) => (
+                            <SelectItem key={c.code + c.dial} value={c.dial}>
+                              {c.dial}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="tel"
+                        placeholder="Phone (optional)"
+                        value={registerData.phone}
+                        onChange={(e) => setRegisterData({ ...registerData, phone: e.target.value.replace(/\D/g, ''), email: '' })}
+                        className="flex-1"
+                      />
+                    </div>
                   </div>
                   
                   <div className="space-y-2">
@@ -223,6 +361,7 @@ const Login = () => {
                       value={registerData.password}
                       onChange={(e) => setRegisterData({ ...registerData, password: e.target.value })}
                       required
+                      minLength={6}
                     />
                   </div>
 
@@ -245,7 +384,7 @@ const Login = () => {
                     </Select>
                   </div>
 
-                  <Button type="submit" className="w-full gradient-primary" disabled={isLoading}>
+                  <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading ? 'Creating Account...' : 'Create Account'}
                   </Button>
                 </form>
@@ -268,13 +407,13 @@ const Login = () => {
               onClick={handleGuestLogin}
             >
               <UserCircle className="mr-2 h-4 w-4" />
-              Continue as Guest
+              Continue as Guest (View Only)
             </Button>
           </CardContent>
         </Card>
 
         <p className="text-center text-sm text-muted-foreground mt-6">
-          🌍 Experience news from multiple perspectives in one place
+          🌍 Experience news from multiple perspectives
         </p>
       </div>
     </div>

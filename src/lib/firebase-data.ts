@@ -10,10 +10,11 @@ import {
   query, 
   where, 
   orderBy,
-  Timestamp 
+  increment,
+  arrayUnion,
+  arrayRemove
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { db, storage } from './firebase';
+import { db } from './firebase';
 
 export interface Post {
   id: string;
@@ -25,6 +26,7 @@ export interface Post {
   image: string;
   createdAt: string;
   likes: number;
+  likedBy: string[];
   isActive: boolean;
 }
 
@@ -37,35 +39,16 @@ export interface ThemeSettings {
 }
 
 export class FirebaseDataService {
-  // Upload image to Firebase Storage
-  static async uploadImage(file: File, userId: string): Promise<string> {
-    const timestamp = Date.now();
-    const fileName = `posts/${userId}/${timestamp}_${file.name}`;
-    const storageRef = ref(storage, fileName);
-    
-    await uploadBytes(storageRef, file);
-    const downloadURL = await getDownloadURL(storageRef);
-    
-    return downloadURL;
-  }
-
   // Create post
   static async createPost(
-    postData: Omit<Post, 'id' | 'createdAt' | 'likes' | 'isActive'>,
-    imageFile?: File
+    postData: Omit<Post, 'id' | 'createdAt' | 'likes' | 'likedBy' | 'isActive'>
   ): Promise<{ post: Post | null; error: string | null }> {
     try {
-      let imageUrl = postData.image;
-      
-      if (imageFile) {
-        imageUrl = await this.uploadImage(imageFile, postData.userId);
-      }
-
       const newPost = {
         ...postData,
-        image: imageUrl,
         createdAt: new Date().toISOString(),
         likes: 0,
+        likedBy: [],
         isActive: true
       };
 
@@ -115,6 +98,28 @@ export class FirebaseDataService {
     }
   }
 
+  // Get all posts for admin (including inactive)
+  static async getAllPosts(): Promise<Post[]> {
+    try {
+      const q = query(
+        collection(db, 'posts'),
+        orderBy('createdAt', 'desc')
+      );
+
+      const querySnapshot = await getDocs(q);
+      const posts: Post[] = [];
+      
+      querySnapshot.forEach((doc) => {
+        posts.push({ id: doc.id, ...doc.data() } as Post);
+      });
+
+      return posts;
+    } catch (error) {
+      console.error('Error fetching all posts:', error);
+      return [];
+    }
+  }
+
   // Get posts by user
   static async getPostsByUser(userId: string): Promise<Post[]> {
     try {
@@ -141,16 +146,9 @@ export class FirebaseDataService {
   // Update post
   static async updatePost(
     postId: string, 
-    updates: Partial<Post>,
-    imageFile?: File,
-    userId?: string
+    updates: Partial<Post>
   ): Promise<{ success: boolean; error: string | null }> {
     try {
-      if (imageFile && userId) {
-        const imageUrl = await this.uploadImage(imageFile, userId);
-        updates.image = imageUrl;
-      }
-
       await updateDoc(doc(db, 'posts', postId), updates);
       return { success: true, error: null };
     } catch (error: any) {
@@ -180,6 +178,35 @@ export class FirebaseDataService {
       return { success: false, error: 'Post not found' };
     } catch (error: any) {
       return { success: false, error: error.message };
+    }
+  }
+
+  // Like/Unlike post
+  static async toggleLike(postId: string, userId: string): Promise<{ success: boolean; liked: boolean; error: string | null }> {
+    try {
+      const postDoc = await getDoc(doc(db, 'posts', postId));
+      if (postDoc.exists()) {
+        const postData = postDoc.data();
+        const likedBy = postData.likedBy || [];
+        const isLiked = likedBy.includes(userId);
+
+        if (isLiked) {
+          await updateDoc(doc(db, 'posts', postId), { 
+            likes: increment(-1),
+            likedBy: arrayRemove(userId)
+          });
+          return { success: true, liked: false, error: null };
+        } else {
+          await updateDoc(doc(db, 'posts', postId), { 
+            likes: increment(1),
+            likedBy: arrayUnion(userId)
+          });
+          return { success: true, liked: true, error: null };
+        }
+      }
+      return { success: false, liked: false, error: 'Post not found' };
+    } catch (error: any) {
+      return { success: false, liked: false, error: error.message };
     }
   }
 
@@ -229,20 +256,37 @@ export class FirebaseDataService {
     root.setAttribute('data-image-size', theme.imageSize);
   }
 
-  // Share post (generates shareable link)
-  static sharePost(post: Post): void {
+  // Share post with platform options
+  static sharePost(post: Post, platform?: 'whatsapp' | 'twitter' | 'facebook' | 'copy'): void {
     const shareUrl = `${window.location.origin}/post/${post.id}`;
-    const shareText = `Check out this post: ${post.title}`;
+    const shareText = `Check out this news: ${post.title}`;
+    const fullText = `${shareText}\n\n${post.content.substring(0, 100)}...\n\n${shareUrl}`;
 
-    if (navigator.share) {
-      navigator.share({
-        title: post.title,
-        text: shareText,
-        url: shareUrl,
-      }).catch((error) => console.log('Error sharing:', error));
-    } else {
-      // Fallback: Copy to clipboard
-      navigator.clipboard.writeText(shareUrl);
+    switch (platform) {
+      case 'whatsapp':
+        window.open(`https://wa.me/?text=${encodeURIComponent(fullText)}`, '_blank');
+        break;
+      case 'twitter':
+        window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`, '_blank');
+        break;
+      case 'facebook':
+        window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank');
+        break;
+      case 'copy':
+        navigator.clipboard.writeText(shareUrl);
+        break;
+      default:
+        if (navigator.share) {
+          navigator.share({
+            title: post.title,
+            text: shareText,
+            url: shareUrl,
+          }).catch(() => {
+            navigator.clipboard.writeText(shareUrl);
+          });
+        } else {
+          navigator.clipboard.writeText(shareUrl);
+        }
     }
   }
 }
@@ -257,6 +301,13 @@ export const countries = [
   { code: 'BR', name: 'Brazil', flag: '🇧🇷' },
   { code: 'IN', name: 'India', flag: '🇮🇳' },
   { code: 'AU', name: 'Australia', flag: '🇦🇺' },
+  { code: 'CN', name: 'China', flag: '🇨🇳' },
+  { code: 'RU', name: 'Russia', flag: '🇷🇺' },
+  { code: 'IT', name: 'Italy', flag: '🇮🇹' },
+  { code: 'ES', name: 'Spain', flag: '🇪🇸' },
+  { code: 'MX', name: 'Mexico', flag: '🇲🇽' },
+  { code: 'CA', name: 'Canada', flag: '🇨🇦' },
+  { code: 'KR', name: 'South Korea', flag: '🇰🇷' },
 ];
 
 export const categories = [
