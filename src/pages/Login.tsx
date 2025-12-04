@@ -8,8 +8,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { FirebaseAuthService } from '@/lib/firebase-auth';
 import { countries } from '@/lib/firebase-data';
 import { useToast } from '@/hooks/use-toast';
-import { Globe, UserCircle, Phone, Mail, Eye, EyeOff } from 'lucide-react';
+import { Globe, UserCircle, Phone, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 // Country codes for phone registration
 const countryCodes = [
@@ -35,19 +36,18 @@ const Login = () => {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [loginMethod, setLoginMethod] = useState<'email' | 'phone'>('email');
+  const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
   
   const [loginData, setLoginData] = useState({
-    email: '',
     phone: '',
-    countryCode: '+1',
+    countryCode: '+91',
     password: '',
   });
   
   const [registerData, setRegisterData] = useState({
-    email: '',
     phone: '',
-    countryCode: '+1',
+    countryCode: '+91',
     password: '',
     name: '',
     username: '',
@@ -58,12 +58,20 @@ const Login = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!loginData.phone) {
+      toast({
+        title: 'Validation Error',
+        description: 'Please enter your phone number',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsLoading(true);
 
-    // For phone login, convert to email format (phone@worldnews.app)
-    const email = loginMethod === 'phone' 
-      ? `${loginData.countryCode.replace('+', '')}${loginData.phone}@worldnews.app`
-      : loginData.email;
+    // Convert phone to synthetic email format
+    const email = `${loginData.countryCode.replace('+', '')}${loginData.phone}@worldnews.app`;
 
     const { user, error } = await FirebaseAuthService.login(email, loginData.password);
     
@@ -96,10 +104,19 @@ const Login = () => {
       return;
     }
 
-    if (!registerData.email && !registerData.phone) {
+    if (!registerData.phone) {
       toast({
         title: 'Validation Error',
-        description: 'Please provide email or phone number',
+        description: 'Please provide phone number with country code',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (registerData.phone.length < 8) {
+      toast({
+        title: 'Validation Error',
+        description: 'Please enter a valid phone number',
         variant: 'destructive',
       });
       return;
@@ -107,10 +124,8 @@ const Login = () => {
 
     setIsLoading(true);
 
-    // For phone registration, create a synthetic email
-    const email = registerData.phone 
-      ? `${registerData.countryCode.replace('+', '')}${registerData.phone}@worldnews.app`
-      : registerData.email;
+    // Create synthetic email from phone number
+    const email = `${registerData.countryCode.replace('+', '')}${registerData.phone}@worldnews.app`;
 
     const { user, error } = await FirebaseAuthService.register(
       email,
@@ -121,7 +136,7 @@ const Login = () => {
         country: registerData.country,
         avatar: registerData.avatar,
         bio: registerData.bio,
-        phone: registerData.phone ? `${registerData.countryCode}${registerData.phone}` : undefined,
+        phone: `${registerData.countryCode}${registerData.phone}`,
       }
     );
 
@@ -137,6 +152,37 @@ const Login = () => {
       toast({
         title: 'Registration Failed',
         description: error || 'Could not create account',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!forgotEmail) {
+      toast({
+        title: 'Error',
+        description: 'Please enter your phone number',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    const email = forgotEmail.includes('@') ? forgotEmail : `${forgotEmail.replace('+', '')}@worldnews.app`;
+    const { success, error } = await FirebaseAuthService.forgotPassword(email);
+    setIsLoading(false);
+
+    if (success) {
+      toast({
+        title: 'Password Reset Sent',
+        description: 'Check your email for reset instructions',
+      });
+      setForgotPasswordOpen(false);
+      setForgotEmail('');
+    } else {
+      toast({
+        title: 'Error',
+        description: error || 'Could not send reset email',
         variant: 'destructive',
       });
     }
@@ -180,7 +226,7 @@ const Login = () => {
         <Card className="shadow-2xl border-0 bg-card/80 backdrop-blur-xl">
           <CardHeader className="text-center pb-2">
             <CardTitle className="text-xl">Get Started</CardTitle>
-            <CardDescription>Login or create an account</CardDescription>
+            <CardDescription>Login with phone number or create an account</CardDescription>
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="login" className="w-full">
@@ -191,72 +237,37 @@ const Login = () => {
               
               <TabsContent value="login">
                 <form onSubmit={handleLogin} className="space-y-4">
-                  {/* Login Method Toggle */}
-                  <div className="flex gap-2 p-1 bg-muted rounded-lg">
-                    <Button
-                      type="button"
-                      variant={loginMethod === 'email' ? 'default' : 'ghost'}
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => setLoginMethod('email')}
-                    >
-                      <Mail className="h-4 w-4 mr-2" />
-                      Email
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={loginMethod === 'phone' ? 'default' : 'ghost'}
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => setLoginMethod('phone')}
-                    >
-                      <Phone className="h-4 w-4 mr-2" />
-                      Phone
-                    </Button>
-                  </div>
-
-                  {loginMethod === 'email' ? (
-                    <div className="space-y-2">
-                      <Label htmlFor="login-email">Email</Label>
-                      <Input
-                        id="login-email"
-                        type="email"
-                        placeholder="your@email.com"
-                        value={loginData.email}
-                        onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
-                        required
-                      />
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <Label>Phone Number</Label>
-                      <div className="flex gap-2">
-                        <Select
-                          value={loginData.countryCode}
-                          onValueChange={(value) => setLoginData({ ...loginData, countryCode: value })}
-                        >
-                          <SelectTrigger className="w-24">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {countryCodes.map((c) => (
-                              <SelectItem key={c.code + c.dial} value={c.dial}>
-                                {c.dial}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                  <div className="space-y-2">
+                    <Label>Phone Number</Label>
+                    <div className="flex gap-2">
+                      <Select
+                        value={loginData.countryCode}
+                        onValueChange={(value) => setLoginData({ ...loginData, countryCode: value })}
+                      >
+                        <SelectTrigger className="w-28">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {countryCodes.map((c) => (
+                            <SelectItem key={c.code + c.dial} value={c.dial}>
+                              {c.dial} {c.code}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <div className="relative flex-1">
+                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                           type="tel"
                           placeholder="Phone number"
                           value={loginData.phone}
                           onChange={(e) => setLoginData({ ...loginData, phone: e.target.value.replace(/\D/g, '') })}
-                          className="flex-1"
+                          className="pl-10"
                           required
                         />
                       </div>
                     </div>
-                  )}
+                  </div>
                   
                   <div className="space-y-2">
                     <Label htmlFor="login-password">Password</Label>
@@ -280,6 +291,32 @@ const Login = () => {
                       </Button>
                     </div>
                   </div>
+
+                  <Dialog open={forgotPasswordOpen} onOpenChange={setForgotPasswordOpen}>
+                    <DialogTrigger asChild>
+                      <Button type="button" variant="link" className="p-0 h-auto text-sm text-primary">
+                        Forgot password?
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Reset Password</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <p className="text-sm text-muted-foreground">
+                          Enter your phone number (with country code, e.g., 917382591233) to receive a password reset link.
+                        </p>
+                        <Input
+                          placeholder="Phone number (e.g., 917382591233)"
+                          value={forgotEmail}
+                          onChange={(e) => setForgotEmail(e.target.value.replace(/\D/g, ''))}
+                        />
+                        <Button onClick={handleForgotPassword} disabled={isLoading} className="w-full">
+                          {isLoading ? 'Sending...' : 'Send Reset Link'}
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
 
                   <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading ? 'Logging in...' : 'Login'}
@@ -314,41 +351,34 @@ const Login = () => {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Email or Phone (choose one)</Label>
-                    <Input
-                      type="email"
-                      placeholder="Email (optional)"
-                      value={registerData.email}
-                      onChange={(e) => setRegisterData({ ...registerData, email: e.target.value, phone: '' })}
-                    />
-                    <div className="flex items-center gap-2 my-2">
-                      <div className="flex-1 h-px bg-border" />
-                      <span className="text-xs text-muted-foreground">OR</span>
-                      <div className="flex-1 h-px bg-border" />
-                    </div>
+                    <Label>Phone Number (Required)</Label>
                     <div className="flex gap-2">
                       <Select
                         value={registerData.countryCode}
                         onValueChange={(value) => setRegisterData({ ...registerData, countryCode: value })}
                       >
-                        <SelectTrigger className="w-24">
+                        <SelectTrigger className="w-28">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           {countryCodes.map((c) => (
                             <SelectItem key={c.code + c.dial} value={c.dial}>
-                              {c.dial}
+                              {c.dial} {c.code}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
-                      <Input
-                        type="tel"
-                        placeholder="Phone (optional)"
-                        value={registerData.phone}
-                        onChange={(e) => setRegisterData({ ...registerData, phone: e.target.value.replace(/\D/g, ''), email: '' })}
-                        className="flex-1"
-                      />
+                      <div className="relative flex-1">
+                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          type="tel"
+                          placeholder="Phone number"
+                          value={registerData.phone}
+                          onChange={(e) => setRegisterData({ ...registerData, phone: e.target.value.replace(/\D/g, '') })}
+                          className="pl-10"
+                          required
+                        />
+                      </div>
                     </div>
                   </div>
                   
@@ -366,7 +396,7 @@ const Login = () => {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="register-country">Country</Label>
+                    <Label htmlFor="register-country">Country (Required)</Label>
                     <Select
                       value={registerData.country}
                       onValueChange={(value) => setRegisterData({ ...registerData, country: value })}
@@ -382,6 +412,9 @@ const Login = () => {
                         ))}
                       </SelectContent>
                     </Select>
+                    <p className="text-xs text-muted-foreground">
+                      You can only create posts for your selected country
+                    </p>
                   </div>
 
                   <Button type="submit" className="w-full" disabled={isLoading}>

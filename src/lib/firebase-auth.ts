@@ -5,7 +5,11 @@ import {
   signOut,
   onAuthStateChanged,
   User as FirebaseUser,
-  updateProfile
+  updateProfile,
+  sendPasswordResetEmail,
+  updatePassword,
+  EmailAuthProvider,
+  reauthenticateWithCredential
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, collection, query, where, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
@@ -26,7 +30,7 @@ export interface User {
 }
 
 export class FirebaseAuthService {
-  // Register new user
+  // Register new user (phone number is primary)
   static async register(
     email: string, 
     password: string, 
@@ -62,7 +66,7 @@ export class FirebaseAuthService {
     } catch (error: any) {
       let errorMessage = error.message;
       if (error.code === 'auth/email-already-in-use') {
-        errorMessage = 'This email/phone is already registered';
+        errorMessage = 'This phone number is already registered';
       } else if (error.code === 'auth/weak-password') {
         errorMessage = 'Password should be at least 6 characters';
       }
@@ -70,9 +74,14 @@ export class FirebaseAuthService {
     }
   }
 
-  // Login user
-  static async login(email: string, password: string): Promise<{ user: User | null; error: string | null }> {
+  // Login user - supports both phone and email lookup
+  static async login(identifier: string, password: string): Promise<{ user: User | null; error: string | null }> {
     try {
+      // Check if it's an email or phone-based synthetic email
+      const email = identifier.includes('@') && !identifier.includes('@worldnews.app') 
+        ? identifier 
+        : identifier;
+
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const firebaseUser = userCredential.user;
 
@@ -91,8 +100,8 @@ export class FirebaseAuthService {
       }
     } catch (error: any) {
       let errorMessage = error.message;
-      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-        errorMessage = 'Invalid email/phone or password';
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        errorMessage = 'Invalid phone number or password';
       }
       return { user: null, error: errorMessage };
     }
@@ -147,6 +156,54 @@ export class FirebaseAuthService {
         callback(null);
       }
     });
+  }
+
+  // Forgot password - send reset email
+  static async forgotPassword(email: string): Promise<{ success: boolean; error: string | null }> {
+    try {
+      await sendPasswordResetEmail(auth, email);
+      return { success: true, error: null };
+    } catch (error: any) {
+      let errorMessage = error.message;
+      if (error.code === 'auth/user-not-found') {
+        errorMessage = 'No account found with this email/phone';
+      }
+      return { success: false, error: errorMessage };
+    }
+  }
+
+  // Change password (requires re-authentication)
+  static async changePassword(currentPassword: string, newPassword: string): Promise<{ success: boolean; error: string | null }> {
+    try {
+      const firebaseUser = auth.currentUser;
+      if (!firebaseUser || !firebaseUser.email) {
+        return { success: false, error: 'Not logged in' };
+      }
+
+      // Re-authenticate
+      const credential = EmailAuthProvider.credential(firebaseUser.email, currentPassword);
+      await reauthenticateWithCredential(firebaseUser, credential);
+
+      // Update password
+      await updatePassword(firebaseUser, newPassword);
+      return { success: true, error: null };
+    } catch (error: any) {
+      let errorMessage = error.message;
+      if (error.code === 'auth/wrong-password') {
+        errorMessage = 'Current password is incorrect';
+      }
+      return { success: false, error: errorMessage };
+    }
+  }
+
+  // Update user profile
+  static async updateUserProfile(userId: string, updates: Partial<User>): Promise<{ success: boolean; error: string | null }> {
+    try {
+      await updateDoc(doc(db, 'users', userId), updates);
+      return { success: true, error: null };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
   }
 
   // Get all users (for admin)

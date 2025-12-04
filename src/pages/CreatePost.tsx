@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { FirebaseAuthService, User } from '@/lib/firebase-auth';
 import { FirebaseDataService, countries, categories } from '@/lib/firebase-data';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Upload, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Upload, Image as ImageIcon, MapPin } from 'lucide-react';
 
 const CreatePost = () => {
   const navigate = useNavigate();
@@ -21,7 +21,6 @@ const CreatePost = () => {
   const [imagePreview, setImagePreview] = useState<string>('');
 
   const [formData, setFormData] = useState({
-    country: '',
     category: '',
     title: '',
     content: '',
@@ -40,7 +39,6 @@ const CreatePost = () => {
     const unsubscribe = FirebaseAuthService.onAuthChange((user) => {
       if (user) {
         setCurrentUser(user);
-        setFormData(prev => ({ ...prev, country: user.country }));
       } else {
         navigate('/');
       }
@@ -85,7 +83,7 @@ const CreatePost = () => {
       return;
     }
 
-    if (!formData.country || !formData.category || !formData.title || !formData.content || !imagePreview) {
+    if (!formData.category || !formData.title || !formData.content || !imagePreview) {
       toast({
         title: 'Validation Error',
         description: 'Please fill in all fields and select an image',
@@ -96,13 +94,14 @@ const CreatePost = () => {
 
     setIsLoading(true);
 
+    // User can only post in their registered country
     const { post, error } = await FirebaseDataService.createPost({
       userId: currentUser.id,
-      country: formData.country,
+      country: currentUser.country, // Automatically use user's country
       category: formData.category as any,
       title: formData.title,
       content: formData.content,
-      image: imagePreview, // Base64 string stored directly
+      image: imagePreview,
     });
 
     setIsLoading(false);
@@ -130,6 +129,8 @@ const CreatePost = () => {
     );
   }
 
+  const userCountry = countries.find(c => c.code === currentUser.country);
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -152,23 +153,18 @@ const CreatePost = () => {
           <CardContent className="pt-6">
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid md:grid-cols-2 gap-4">
+                {/* Country is fixed to user's country */}
                 <div className="space-y-2">
-                  <Label htmlFor="country">Country</Label>
-                  <Select
-                    value={formData.country}
-                    onValueChange={(value) => setFormData({ ...formData, country: value })}
-                  >
-                    <SelectTrigger id="country">
-                      <SelectValue placeholder="Select country" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {countries.map((country) => (
-                        <SelectItem key={country.code} value={country.code}>
-                          {country.flag} {country.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label>Your Country</Label>
+                  <div className="flex items-center gap-2 h-10 px-3 rounded-md border bg-muted/50">
+                    <MapPin className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">
+                      {userCountry?.flag} {userCountry?.name || currentUser.country}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Posts are created for your registered country
+                  </p>
                 </div>
 
                 <div className="space-y-2">
