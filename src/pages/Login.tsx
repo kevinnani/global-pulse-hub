@@ -12,23 +12,23 @@ import { Globe, UserCircle, Phone, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
-// Country codes for phone registration
+// Country codes for phone registration - using unique identifiers
 const countryCodes = [
-  { code: 'US', dial: '+1', name: 'United States' },
-  { code: 'UK', dial: '+44', name: 'United Kingdom' },
-  { code: 'FR', dial: '+33', name: 'France' },
-  { code: 'DE', dial: '+49', name: 'Germany' },
-  { code: 'JP', dial: '+81', name: 'Japan' },
-  { code: 'BR', dial: '+55', name: 'Brazil' },
-  { code: 'IN', dial: '+91', name: 'India' },
-  { code: 'AU', dial: '+61', name: 'Australia' },
-  { code: 'CN', dial: '+86', name: 'China' },
-  { code: 'RU', dial: '+7', name: 'Russia' },
-  { code: 'IT', dial: '+39', name: 'Italy' },
-  { code: 'ES', dial: '+34', name: 'Spain' },
-  { code: 'MX', dial: '+52', name: 'Mexico' },
-  { code: 'CA', dial: '+1', name: 'Canada' },
-  { code: 'KR', dial: '+82', name: 'South Korea' },
+  { id: 'US', dial: '+1', name: 'United States' },
+  { id: 'UK', dial: '+44', name: 'United Kingdom' },
+  { id: 'FR', dial: '+33', name: 'France' },
+  { id: 'DE', dial: '+49', name: 'Germany' },
+  { id: 'JP', dial: '+81', name: 'Japan' },
+  { id: 'BR', dial: '+55', name: 'Brazil' },
+  { id: 'IN', dial: '+91', name: 'India' },
+  { id: 'AU', dial: '+61', name: 'Australia' },
+  { id: 'CN', dial: '+86', name: 'China' },
+  { id: 'RU', dial: '+7', name: 'Russia' },
+  { id: 'IT', dial: '+39', name: 'Italy' },
+  { id: 'ES', dial: '+34', name: 'Spain' },
+  { id: 'MX', dial: '+52', name: 'Mexico' },
+  { id: 'CA_1', dial: '+1', name: 'Canada' },
+  { id: 'KR', dial: '+82', name: 'South Korea' },
 ];
 
 const Login = () => {
@@ -249,8 +249,8 @@ const Login = () => {
                         </SelectTrigger>
                         <SelectContent>
                           {countryCodes.map((c) => (
-                            <SelectItem key={c.code + c.dial} value={c.dial}>
-                              {c.dial} {c.code}
+                            <SelectItem key={c.id} value={c.dial}>
+                              {c.dial} {c.id.replace('_1', '')}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -362,8 +362,8 @@ const Login = () => {
                         </SelectTrigger>
                         <SelectContent>
                           {countryCodes.map((c) => (
-                            <SelectItem key={c.code + c.dial} value={c.dial}>
-                              {c.dial} {c.code}
+                            <SelectItem key={c.id} value={c.dial}>
+                              {c.dial} {c.id.replace('_1', '')}
                             </SelectItem>
                           ))}
                         </SelectContent>
